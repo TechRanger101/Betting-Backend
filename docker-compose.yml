@@ -1,0 +1,87 @@
+version: '3.9'
+services:
+  fareplay-testnet:
+    image: trufflesuite/ganache:latest
+    network_mode: host
+    ports:
+      - 50174:50174
+    volumes:
+      - fare-testnet-data:${TESTNET_DB_PATH:-"/tmp/testnet-docker-db"}
+    command:
+      - '--server.ws'
+      - '--server.wsBinary=auto'
+      - '--server.port=${TESTNET_PORT:-50174}'
+      - '--chain.asyncRequestProcessing'
+      - '--chain.chainId=${CHAIN_ID:-51338}'
+      - '--chain.networkId=${CHAIN_ID:-51338}'
+      - '--chain.vmErrorsOnRPCResponse'
+      - '--database.dbPath=${TESTNET_DB_PATH:-"/tmp/testnet-docker-db"}'
+      - '--miner.coinbase=${TESTNET_COINBASE:-0x61117bcA4214dF69F9a710DF6F8024fF5D0964d2}'
+      - '--miner.defaultGasPrice=1000000000'
+      - '--blockTime=0'
+      - '--logging.debug'
+      - '--logging.verbose'
+      - '--wallet.defaultBalance=100000000'
+      - '--wallet.totalAccounts=25'
+      - '--wallet.mnemonic=${TESTNET_MNEMONIC:-"ticket improve exist summer reform exercise mirror trade raven slogan crop siege artwork between client foster join swamp"}'
+    # profiles: ['testnet']
+  fareplay-smart-contracts:
+    build:
+      context: ${FARE_CONTRACT_REPO_PATH}
+      dockerfile: Dockerfile
+    network_mode: host
+    profiles: ['testnet']
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:50521/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    depends_on:
+      - fareplay-testnet
+  fareplay-mongo-db:
+    image: mongo:latest
+    ports:
+      - 27017:27017
+    restart: always
+    logging:
+      options:
+        max-size: 1g
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DATABASE_NAME}
+    volumes:
+      - fare-store-data:${MONGO_STORE_DBPATH}
+      - ./bin/init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh
+  fareplay-redis:
+    image: redis/redis-stack-server:latest
+    restart: always
+    ports:
+      - 6379:6379
+    volumes:
+      - fare-cache:/data
+  fareplay-server:
+    # image: fp-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NO_CACHE=1
+    network_mode: host
+    profiles: ['server']
+    restart: unless-stopped
+    depends_on:
+      - fareplay-testnet
+      - fareplay-smart-contracts
+networks:
+  default:
+    name: fareplay-bridge-network
+    driver: bridge
+volumes:
+  fare-store-data:
+    driver: local
+  fare-testnet-data:
+    driver: local
+  fare-cache:
+    driver: local

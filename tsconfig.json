@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "lib": ["ESNext"],
+    "preserveSymlinks": true,
+    "moduleResolution": "node",
+    "target": "ES2020",
+    "module": "ESNext",
+    "declaration": true,
+    "declarationMap": true,
+    "noImplicitAny": false,
+    "experimentalDecorators": true,
+    "sourceMap": false,
+    "esModuleInterop": true,
+    "strict": true,
+    "allowJs": true,
+    "strictNullChecks": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["./bin/*", "dist", "node_modules"]
+}

@@ -1,0 +1,2 @@
+import 'dotenv/config'
+import '../dist/index.js'

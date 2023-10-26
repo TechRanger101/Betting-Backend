@@ -1,0 +1,127 @@
+image: node:lts
+
+stages:
+  - setup
+  - lint
+  - build
+  - deploy-test
+
+# These variables will default to those appropriate to deploy
+#   the test environment. Manual build steps will deploy to
+#   other environments for now.
+variables:
+  CI: "true"
+  AWS_REGION: us-west-2
+  APP_NAME: fp-api
+  ENV_NAME: fp-api-test
+  ENV_URL: http://fp-api-test.us-west-2.elasticbeanstalk.com/
+  FILE: $CI_COMMIT_REF_NAME-$CI_PIPELINE_ID
+  BUILD_DIR: $CI_PROJECT_DIR/builds
+  BUILD_FILENAME: $CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA-$CI_PIPELINE_ID.zip
+  BUILD_FILE: $BUILD_DIR/$BUILD_FILENAME
+  TMP_DIR: $CI_PROJECT_DIR/tmp
+  EB_OPTIONS_FILE: $TMP_DIR/ebOptions.json
+  BIN_DIR: $CI_PROJECT_DIR/bin
+  BUCKET: elasticbeanstalk-us-west-2-390985807324
+  BUCKET_PREFIX: builds/test
+  AWS_PLATFORM: Docker
+  KEY: gitlab-ci-west
+
+cache: &global_cache
+  key: $CI_COMMIT_REF_SLUG-$CI_PROJECT_DIR
+  paths:
+    - .pnpm-store
+    - node_modules/
+  policy: pull-push
+
+setup:
+  stage: setup
+  before_script:
+    - curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
+    - pnpm config set store-dir .pnpm-store
+  script:
+    - echo 'INSTALLING DEPENDENCIES'
+    - rm -rf node_modules/
+    - pnpm i
+  cache:
+    key: $CI_COMMIT_REF_SLUG-$CI_PROJECT_DIR
+    paths:
+      - .pnpm-store
+      - node_modules/
+
+lint:
+  stage: lint
+  cache:
+    key: $CI_COMMIT_REF_SLUG-$CI_PROJECT_DIR
+    paths:
+      - node_modules/
+    policy: pull
+  before_script:
+    - curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
+    - pnpm config set store-dir .pnpm-store
+  script:
+    - echo 'LINT'
+    - pnpm run lint:ci
+
+build:
+  stage: build
+  environment:
+    name: $ENV_NAME
+    url: $ENV_URL
+  cache:
+    key: $CI_COMMIT_REF_SLUG-$CI_PROJECT_DIR
+    paths:
+      - node_modules/
+    policy: pull
+  before_script:
+    - curl -f https://get.pnpm.io/v6.16.js | node - add --global pnpm@7
+    - pnpm config set store-dir .pnpm-store
+  script:
+    - echo 'BUILD'
+    # - $BIN_DIR/ensure-env-vars.sh
+    - mkdir -p $TMP_DIR
+    - touch $EB_OPTIONS_FILE
+    - node $BIN_DIR/generate-eb-options.js > $EB_OPTIONS_FILE
+    - apt-get update -y && apt-get install -y zip
+    - pnpm run build
+    - pnpm run postbuild
+    - mkdir -p $BUILD_DIR
+      #- mkdir -p $BUILD_DIR/.platform
+      #- cp -r $CI_PROJECT_DIR/.platform/* $BUILD_DIR/.platform
+    - cd dist && zip -qdgds 10m -r $BUILD_FILE . && cd ..
+    - ls $BUILD_DIR
+  artifacts:
+    paths:
+      - $BUILD_FILE
+      - $EB_OPTIONS_FILE
+
+deploy-test:
+  image: python:latest
+  stage: deploy-test
+  environment:
+    name: $ENV_NAME
+    url: $ENV_URL
+  script:
+    - pip install awsebcli --upgrade --user
+    - pip install awscli
+    - source ~/.bashrc
+    - export PATH=~/.local/bin:$PATH
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set region $AWS_REGION
+    - aws s3 cp $BUILD_FILE s3://$BUCKET/$BUCKET_PREFIX/$BUILD_FILENAME
+    - |
+      aws elasticbeanstalk create-application-version \
+        --application-name $APP_NAME \
+        --version-label v_$CI_COMMIT_SHORT_SHA \
+        --source-bundle S3Bucket=$BUCKET,S3Key=$BUCKET_PREFIX/$BUILD_FILENAME
+    - |
+      aws elasticbeanstalk update-environment \
+      --environment-name $ENV_NAME \
+      --version-label v_$CI_COMMIT_SHORT_SHA \
+      # --option-settings file://$EB_OPTIONS_FILE
+  dependencies:
+    - build
+  only:
+    - environment/test
+
