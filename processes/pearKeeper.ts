@@ -16,7 +16,7 @@ async function main() {
 
     await cryptoAdmin.init()
     logger.info('cryptoAdmin initialized successfully')
-
+    /// got some issues with this code
     await cryptoAdmin.initPearKeeper()
     logger.info('PearKeeper process for Spin is active')
 
