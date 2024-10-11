@@ -31,6 +31,7 @@ class FareTokenAPI {
     return balance
   }
 
+  /// got some issues in this part
   public async getOwnerBalance(): Promise<string> {
     const balance = await this.getFareBalance(await this.contract.owner())
     return balance
